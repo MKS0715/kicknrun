@@ -28,34 +28,37 @@ def _safe_float(value: Any, fallback: float) -> float:
         return fallback
 
 
-def initial_positions(team: str, count: int, offense_team: str) -> list[dict[str, float | int]]:
-    """Create simple percentage-based positions for a kick-and-run tactics board."""
+def initial_positions(team: str, count: int, offense_team: str) -> list[dict[str, Any]]:
+    """Create percentage-based positions for the kick-and-run tactics board.
+
+    The offense starts with one current kicker on the field and all remaining
+    hitters on the waiting bench. The defense starts fully deployed.
+    """
     count = max(MIN_PLAYERS, min(MAX_PLAYERS, int(count)))
     offense = team == offense_team
 
     if offense:
-        rows = [
-            (84.0, [18, 34, 50, 66, 82]),
-            (74.0, [25, 42, 58, 75]),
-            (66.0, [35, 50, 65]),
-        ]
-    else:
-        rows = [
-            (35.0, [18, 34, 50, 66, 82]),
-            (47.0, [25, 42, 58, 75]),
-            (57.0, [35, 50, 65]),
-        ]
+        result: list[dict[str, Any]] = []
+        for idx in range(count):
+            if idx == 0:
+                result.append({"id": 1, "x": 50.0, "y": 84.0, "status": "field"})
+            else:
+                result.append({"id": idx + 1, "x": 50.0, "y": 84.0, "status": "bench"})
+        return result
 
+    rows = [
+        (34.0, [18, 34, 50, 66, 82]),
+        (46.0, [25, 42, 58, 75]),
+        (56.0, [35, 50, 65]),
+    ]
     coords: list[tuple[float, float]] = []
     for y, xs in rows:
         coords.extend((float(x), y) for x in xs)
 
-    # MAX_PLAYERS is 12, and rows provide 12 positions.
-    result = []
-    for idx in range(count):
-        x, y = coords[idx]
-        result.append({"id": idx + 1, "x": x, "y": y})
-    return result
+    return [
+        {"id": idx + 1, "x": coords[idx][0], "y": coords[idx][1], "status": "field"}
+        for idx in range(count)
+    ]
 
 
 def make_initial_board(strategy_team: str, counts: dict[str, int] | None = None) -> dict[str, Any]:
@@ -64,11 +67,12 @@ def make_initial_board(strategy_team: str, counts: dict[str, int] | None = None)
     return {
         "counts": counts,
         "offense": offense,
+        "current_kicker": 1,
         "players": {
             "A": initial_positions("A", counts["A"], offense),
             "B": initial_positions("B", counts["B"], offense),
         },
-        "ball": {"x": 50.0, "y": 79.0},
+        "ball": {"x": 50.0, "y": 78.0},
         "revision": 0,
         "updated_at": time(),
     }
@@ -79,9 +83,9 @@ def _normalize_players(
     team: str,
     count: int,
     offense_team: str,
-) -> list[dict[str, float | int]]:
+) -> list[dict[str, Any]]:
     defaults = initial_positions(team, count, offense_team)
-    by_id: dict[int, dict[str, float | int]] = {}
+    by_id: dict[int, dict[str, Any]] = {}
 
     if isinstance(players, list):
         for raw in players:
@@ -91,16 +95,29 @@ def _normalize_players(
             if not 1 <= pid <= count:
                 continue
             default = defaults[pid - 1]
+            status = raw.get("status", default["status"])
+            if status not in ("field", "bench"):
+                status = default["status"]
+            if team != offense_team:
+                status = "field"
             by_id[pid] = {
                 "id": pid,
                 "x": _clamp(_safe_float(raw.get("x"), float(default["x"])), 2.0, 98.0),
                 "y": _clamp(_safe_float(raw.get("y"), float(default["y"])), 2.0, 98.0),
+                "status": status,
             }
 
-    output = []
-    for pid in range(1, count + 1):
-        output.append(by_id.get(pid, defaults[pid - 1]))
-    return output
+    return [deepcopy(by_id.get(pid, defaults[pid - 1])) for pid in range(1, count + 1)]
+
+
+def _ensure_current_kicker(players: list[dict[str, Any]], current_kicker: int) -> None:
+    for player in players:
+        if int(player["id"]) == current_kicker:
+            if player.get("status") != "field":
+                player["status"] = "field"
+                player["x"] = 50.0
+                player["y"] = 84.0
+            return
 
 
 class SharedGameStore:
@@ -134,18 +151,22 @@ class SharedGameStore:
                     raw = _safe_int(incoming_counts.get(label), current)
                     self._counts[label] = max(MIN_PLAYERS, min(MAX_PLAYERS, raw))
 
+            current = self._boards[team]
             offense = incoming.get("offense")
             if offense not in ("A", "B"):
-                offense = self._boards[team]["offense"]
+                offense = current["offense"]
+
+            current_kicker = _safe_int(
+                incoming.get("current_kicker"),
+                int(current.get("current_kicker", 1)),
+            )
+            current_kicker = max(1, min(self._counts[offense], current_kicker))
 
             incoming_players = incoming.get("players", {})
             if not isinstance(incoming_players, dict):
                 incoming_players = {}
 
-            current = self._boards[team]
-            current["offense"] = offense
-            current["counts"] = deepcopy(self._counts)
-            current["players"] = {
+            normalized_players = {
                 "A": _normalize_players(
                     incoming_players.get("A", current["players"]["A"]),
                     "A",
@@ -159,11 +180,17 @@ class SharedGameStore:
                     offense,
                 ),
             }
+            _ensure_current_kicker(normalized_players[offense], current_kicker)
+
+            current["offense"] = offense
+            current["current_kicker"] = current_kicker
+            current["counts"] = deepcopy(self._counts)
+            current["players"] = normalized_players
 
             ball = incoming.get("ball", {})
             if not isinstance(ball, dict):
                 ball = {}
-            current_ball = current.get("ball", {"x": 50.0, "y": 79.0})
+            current_ball = current.get("ball", {"x": 50.0, "y": 78.0})
             current["ball"] = {
                 "x": _clamp(_safe_float(ball.get("x"), current_ball["x"]), 2.0, 98.0),
                 "y": _clamp(_safe_float(ball.get("y"), current_ball["y"]), 2.0, 98.0),
@@ -171,13 +198,19 @@ class SharedGameStore:
             current["revision"] = int(current.get("revision", 0)) + 1
             current["updated_at"] = time()
 
-            # Player counts are shared globally. Resize the other private tactics board,
-            # but preserve its own positions and strategy choices.
+            # Counts are shared globally. Resize the other private tactics board
+            # while preserving that board's own strategy, locations, and kicker.
             other_team = "B" if team == "A" else "A"
             other = self._boards[other_team]
             other_offense = other.get("offense", other_team)
-            other["counts"] = deepcopy(self._counts)
-            other["players"] = {
+            other_kicker = max(
+                1,
+                min(
+                    self._counts[other_offense],
+                    _safe_int(other.get("current_kicker"), 1),
+                ),
+            )
+            other_players = {
                 "A": _normalize_players(
                     other.get("players", {}).get("A", []),
                     "A",
@@ -191,6 +224,10 @@ class SharedGameStore:
                     other_offense,
                 ),
             }
+            _ensure_current_kicker(other_players[other_offense], other_kicker)
+            other["counts"] = deepcopy(self._counts)
+            other["current_kicker"] = other_kicker
+            other["players"] = other_players
             other["revision"] = int(other.get("revision", 0)) + 1
             other["updated_at"] = time()
 

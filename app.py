@@ -55,7 +55,7 @@ BOARD_HTML = r"""
         <div class="kr-tool-label">공격팀 선택</div>
         <button class="kr-offense" data-offense="A">🔵 A팀 공격</button>
         <button class="kr-offense" data-offense="B">🔴 B팀 공격</button>
-        <div class="kr-help">공격팀을 바꾸면 선수들이 공·수 기본 위치로 즉시 재배치됩니다.</div>
+        <div class="kr-help">공격팀을 바꾸면 키커 1명만 홈에 남고, 나머지는 공격 대기석으로 이동합니다.</div>
       </section>
 
       <section class="kr-tool-group kr-actions">
@@ -66,12 +66,32 @@ BOARD_HTML = r"""
     </aside>
 
     <div class="kr-board-area">
-      <div id="field" class="kr-field">
-        <div class="safe-zone"><span>안전지대</span></div>
-        <div class="restriction-line"><span>수비제한선</span></div>
-        <div class="home-mark"><span>HOME</span></div>
-        <div id="playersLayer" class="players-layer"></div>
-        <div id="ball" class="ball" role="img" aria-label="공">⚽</div>
+      <div class="kr-play-area">
+        <div id="field" class="kr-field">
+          <div class="safe-zone">
+            <div class="safe-title">안전지대 <small>최대 3명</small></div>
+            <div class="safe-slots" aria-hidden="true"><i></i><i></i><i></i></div>
+          </div>
+          <div class="restriction-line"><span>수비제한선</span></div>
+          <div class="home-mark"><span>HOME</span></div>
+          <div id="playersLayer" class="players-layer"></div>
+          <div id="ball" class="ball" role="img" aria-label="공">⚽</div>
+        </div>
+
+        <aside class="kr-bench">
+          <div class="bench-heading">
+            <strong id="benchTeam">공격 대기</strong>
+            <span>WAITING</span>
+          </div>
+          <div class="kicker-card">
+            <span>현재 키커</span>
+            <strong id="currentKickerLabel">1번</strong>
+          </div>
+          <div id="benchPlayers" class="bench-players"></div>
+          <button id="nextKicker" class="next-kicker">다음 키커 ▶</button>
+          <div id="safeCount" class="safe-count">안전지대 0 / 3</div>
+          <div class="bench-help">키커가 공을 찬 뒤 위치를 옮기고 <b>다음 키커</b>를 누르세요.</div>
+        </aside>
       </div>
 
       <div class="kr-footer">
@@ -86,7 +106,7 @@ BOARD_HTML = r"""
 
 BOARD_CSS = r"""
 .kr-shell {
-  width:100%; height:100%; box-sizing:border-box; max-width:1020px; margin:0 auto;
+  width:100%; height:100%; box-sizing:border-box; max-width:1040px; margin:0 auto;
   font-family:var(--st-font,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif);
   color:#1f2937; background:#f8fafc; border:1px solid #dbe4ee;
   border-radius:18px; padding:14px; overflow:hidden;
@@ -95,7 +115,7 @@ BOARD_CSS = r"""
 .kr-title { font-size:22px; font-weight:800; letter-spacing:-0.02em; }
 .kr-subtitle { font-size:13px; color:#64748b; margin-top:2px; }
 .kr-sync { font-size:12px; font-weight:800; color:#15803d; background:#dcfce7; border-radius:999px; padding:6px 10px; white-space:nowrap; }
-.kr-main { display:grid; grid-template-columns:190px minmax(0,720px); gap:14px; align-items:start; justify-content:center; }
+.kr-main { display:grid; grid-template-columns:190px minmax(0,740px); gap:14px; align-items:start; justify-content:center; }
 .kr-toolbar { display:flex; flex-direction:column; gap:10px; min-width:0; }
 .kr-tool-group { display:flex; flex-direction:column; align-items:stretch; gap:7px; background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:10px; }
 .kr-tool-label { font-size:12px; font-weight:800; color:#64748b; margin-bottom:1px; }
@@ -103,37 +123,57 @@ BOARD_CSS = r"""
 .kr-counter-controls { display:flex; align-items:center; gap:6px; }
 .team-a-soft { background:#eff6ff; }
 .team-b-soft { background:#fff1f2; }
-.kr-counter button, .kr-tool-group > button { border:1px solid #cbd5e1; background:#fff; border-radius:9px; min-width:34px; height:38px; padding:0 9px; font-size:13px; font-weight:800; cursor:pointer; }
+.kr-counter button, .kr-tool-group > button, .next-kicker { border:1px solid #cbd5e1; background:#fff; border-radius:9px; min-width:34px; height:38px; padding:0 9px; font-size:13px; font-weight:800; cursor:pointer; }
 .kr-counter button { min-width:31px; width:31px; height:31px; padding:0; font-size:18px; }
 .kr-counter-controls span { min-width:20px; text-align:center; font-weight:800; }
-.kr-counter button:disabled, .kr-toolbar button:disabled { opacity:.45; cursor:not-allowed; }
+.kr-counter button:disabled, .kr-toolbar button:disabled, .next-kicker:disabled { opacity:.45; cursor:not-allowed; }
 .kr-offense { width:100%; }
 .kr-offense.active { outline:3px solid rgba(15,118,110,.17); border-color:#0f766e !important; background:#f0fdfa !important; }
 .kr-help { font-size:11px; line-height:1.45; color:#64748b; background:#f8fafc; border-radius:8px; padding:7px 8px; }
 .kr-board-area { min-width:0; }
+.kr-play-area { display:grid; grid-template-columns:minmax(0,1fr) 118px; gap:10px; align-items:stretch; }
 .kr-field { position:relative; width:100%; height:640px; border-radius:16px; overflow:hidden; background:linear-gradient(180deg,#ecfccb 0%,#dcfce7 100%); border:3px solid #ffffff; box-shadow:inset 0 0 0 1px #a7c7a8; touch-action:none; user-select:none; }
 .kr-field::before { content:""; position:absolute; left:9%; right:9%; top:23%; bottom:8%; border:2px solid rgba(255,255,255,.95); border-radius:36% 36% 10% 10%; pointer-events:none; }
-.safe-zone { position:absolute; left:18%; right:18%; top:4%; height:15%; border:3px solid #eab308; background:rgba(254,240,138,.78); border-radius:16px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#854d0e; box-shadow:0 2px 8px rgba(0,0,0,.08); pointer-events:none; }
+.safe-zone { position:absolute; left:16%; right:16%; top:4%; height:16%; border:3px solid #eab308; background:rgba(254,240,138,.78); border-radius:16px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; color:#854d0e; box-shadow:0 2px 8px rgba(0,0,0,.08); pointer-events:none; }
+.safe-title { font-weight:900; font-size:15px; }
+.safe-title small { font-size:10px; font-weight:800; opacity:.75; margin-left:4px; }
+.safe-slots { display:flex; gap:28px; }
+.safe-slots i { width:30px; height:30px; border-radius:50%; border:2px dashed rgba(161,98,7,.45); background:rgba(255,255,255,.28); }
 .restriction-line { position:absolute; left:5%; right:5%; top:63%; border-top:4px dashed rgba(185,28,28,.75); text-align:center; pointer-events:none; }
 .restriction-line span { position:relative; top:-14px; display:inline-block; background:rgba(255,255,255,.86); color:#991b1b; padding:3px 8px; border-radius:999px; font-size:12px; font-weight:800; }
 .home-mark { position:absolute; left:50%; bottom:3.5%; transform:translateX(-50%); width:78px; height:46px; background:#fff; border:3px solid #475569; clip-path:polygon(0 0,100% 0,88% 72%,50% 100%,12% 72%); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; color:#334155; pointer-events:none; }
 .players-layer { position:absolute; inset:0; pointer-events:none; }
 .player { position:absolute; transform:translate(-50%,-50%); width:46px; height:46px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:17px; border:3px solid #fff; box-shadow:0 3px 10px rgba(15,23,42,.25); pointer-events:auto; touch-action:none; cursor:grab; z-index:5; }
 .player:active, .ball:active { cursor:grabbing; transform:translate(-50%,-50%) scale(1.08); }
-.player.team-a { background:#2563eb; }
-.player.team-b { background:#e11d48; }
+.player.team-a, .bench-player.team-a { background:#2563eb; }
+.player.team-b, .bench-player.team-b { background:#e11d48; }
 .player.offense { box-shadow:0 0 0 4px rgba(255,255,255,.9),0 0 0 8px rgba(15,118,110,.45),0 4px 12px rgba(15,23,42,.25); }
+.player.current-kicker::before { content:"K"; position:absolute; left:-7px; top:-8px; width:19px; height:19px; border-radius:50%; background:#0f766e; color:#fff; display:flex; align-items:center; justify-content:center; font-size:10px; border:2px solid #fff; }
 .player.own::after { content:""; position:absolute; width:8px; height:8px; border-radius:50%; background:#fde047; top:-5px; right:-3px; border:2px solid #fff; }
 .ball { position:absolute; transform:translate(-50%,-50%); width:48px; height:48px; display:flex; align-items:center; justify-content:center; font-size:38px; filter:drop-shadow(0 3px 4px rgba(0,0,0,.25)); z-index:10; touch-action:none; cursor:grab; }
+.kr-bench { height:640px; box-sizing:border-box; background:#fff; border:1px solid #dbe4ee; border-radius:14px; padding:9px; display:flex; flex-direction:column; gap:8px; overflow:hidden; }
+.bench-heading { text-align:center; background:#f8fafc; border-radius:10px; padding:8px 4px; line-height:1.1; }
+.bench-heading strong { display:block; font-size:12px; }
+.bench-heading span { display:block; margin-top:4px; font-size:9px; color:#94a3b8; font-weight:800; letter-spacing:.08em; }
+.kicker-card { background:#f0fdfa; border:1px solid #99f6e4; border-radius:10px; padding:8px 4px; text-align:center; }
+.kicker-card span { display:block; font-size:10px; color:#0f766e; font-weight:800; }
+.kicker-card strong { display:block; margin-top:2px; font-size:17px; color:#115e59; }
+.bench-players { display:flex; flex-direction:column; align-items:center; gap:7px; overflow:auto; min-height:0; flex:1; padding:3px 0; }
+.bench-player { flex:0 0 auto; width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:14px; border:3px solid #fff; box-shadow:0 2px 7px rgba(15,23,42,.2); }
+.next-kicker { width:100%; min-height:40px; height:auto; padding:7px 5px; border-color:#0f766e; color:#0f766e; background:#f0fdfa; font-size:11px; }
+.safe-count { text-align:center; border-radius:9px; padding:7px 4px; background:#fefce8; color:#854d0e; font-size:10px; font-weight:900; border:1px solid #fde68a; }
+.safe-count.warn { background:#fff1f2; color:#be123c; border-color:#fecdd3; }
+.bench-help { font-size:9px; line-height:1.4; color:#64748b; text-align:center; }
 .kr-footer { display:flex; gap:16px; align-items:center; padding:9px 4px 0; color:#64748b; font-size:12px; }
 .kr-footer span:last-child { margin-left:auto; font-weight:700; }
 .legend-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; }
 .legend-dot.team-a { background:#2563eb; }
 .legend-dot.team-b { background:#e11d48; }
-@media (max-width: 850px) {
+@media (max-width: 900px) {
   .kr-shell { padding:10px; }
   .kr-main { grid-template-columns:160px minmax(0,1fr); gap:8px; }
-  .kr-field { height:600px; }
+  .kr-play-area { grid-template-columns:minmax(0,1fr) 104px; gap:7px; }
+  .kr-field, .kr-bench { height:600px; }
   .kr-tool-group { padding:8px; }
   .kr-help { display:none; }
 }
@@ -144,8 +184,10 @@ BOARD_CSS = r"""
   .kr-toolbar { width:100%; display:grid; grid-template-columns:1fr 1fr; }
   .kr-actions { grid-column:1 / -1; display:grid; grid-template-columns:1fr 1fr; }
   .kr-actions .kr-tool-label { grid-column:1 / -1; }
-  .kr-field { height:540px; }
+  .kr-play-area { grid-template-columns:minmax(0,1fr) 92px; gap:6px; }
+  .kr-field, .kr-bench { height:540px; }
   .player { width:42px; height:42px; font-size:15px; }
+  .bench-player { width:34px; height:34px; }
 }
 """
 
@@ -155,33 +197,39 @@ export default function({ parentElement, data, setStateValue }) {
   const field = parentElement.querySelector('#field');
   const layer = parentElement.querySelector('#playersLayer');
   const ball = parentElement.querySelector('#ball');
+  const benchPlayers = parentElement.querySelector('#benchPlayers');
   const editable = Boolean(data?.editable);
   const strategyTeam = (data?.strategy_team === 'B') ? 'B' : 'A';
 
-  // If a finger is currently dragging a marker, do not let an auto-refresh
-  // replace the in-progress local interaction.
   if (shell.dataset.dragging === '1') return;
 
   let state = structuredClone(data?.board_state || {});
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const safeCount = (v) => clamp(Number.parseInt(v ?? 1, 10) || 1, 1, 12);
+  const safeCountNumber = (v) => clamp(Number.parseInt(v ?? 1, 10) || 1, 1, 12);
 
   function defaultPositions(team, count, offenseTeam) {
-    const offense = team === offenseTeam;
-    const rows = offense
-      ? [[84,[18,34,50,66,82]],[74,[25,42,58,75]],[66,[35,50,65]]]
-      : [[35,[18,34,50,66,82]],[47,[25,42,58,75]],[57,[35,50,65]]];
+    if (team === offenseTeam) {
+      return Array.from({length:count}, (_,i) => ({
+        id:i+1,
+        x:50,
+        y:84,
+        status:i === 0 ? 'field' : 'bench',
+      }));
+    }
+    const rows = [[34,[18,34,50,66,82]],[46,[25,42,58,75]],[56,[35,50,65]]];
     const coords = [];
     rows.forEach(([y,xs]) => xs.forEach(x => coords.push({x:Number(x), y:Number(y)})));
-    return Array.from({length:count}, (_,i) => ({id:i+1, ...coords[i]}));
+    return Array.from({length:count}, (_,i) => ({id:i+1, ...coords[i], status:'field'}));
   }
 
   function ensureState() {
     state.counts = state.counts || {A:8,B:9};
-    state.counts.A = safeCount(state.counts.A);
-    state.counts.B = safeCount(state.counts.B);
+    state.counts.A = safeCountNumber(state.counts.A);
+    state.counts.B = safeCountNumber(state.counts.B);
     state.offense = ['A','B'].includes(state.offense) ? state.offense : strategyTeam;
+    state.current_kicker = clamp(Number.parseInt(state.current_kicker ?? 1, 10) || 1, 1, state.counts[state.offense]);
     state.players = state.players || {A:[],B:[]};
+
     ['A','B'].forEach(team => {
       const target = state.counts[team];
       const defaults = defaultPositions(team, target, state.offense);
@@ -191,12 +239,27 @@ export default function({ parentElement, data, setStateValue }) {
         const id = i + 1;
         const prev = mapped.get(id);
         if (!prev) return defaults[i];
-        return {id, x:clamp(Number(prev.x)||defaults[i].x,2,98), y:clamp(Number(prev.y)||defaults[i].y,2,98)};
+        let status = ['field','bench'].includes(prev.status) ? prev.status : defaults[i].status;
+        if (team !== state.offense) status = 'field';
+        return {
+          id,
+          x:clamp(Number(prev.x)||defaults[i].x,2,98),
+          y:clamp(Number(prev.y)||defaults[i].y,2,98),
+          status,
+        };
       });
     });
-    state.ball = state.ball || {x:50,y:79};
+
+    const kicker = state.players[state.offense].find(p => p.id === state.current_kicker);
+    if (kicker && kicker.status !== 'field') {
+      kicker.status = 'field';
+      kicker.x = 50;
+      kicker.y = 84;
+    }
+
+    state.ball = state.ball || {x:50,y:78};
     state.ball.x = clamp(Number(state.ball.x)||50,2,98);
-    state.ball.y = clamp(Number(state.ball.y)||79,2,98);
+    state.ball.y = clamp(Number(state.ball.y)||78,2,98);
   }
 
   function commit() {
@@ -229,6 +292,7 @@ export default function({ parentElement, data, setStateValue }) {
       if (pointerId !== ev.pointerId || !el.hasPointerCapture(pointerId)) return;
       const pos = coordsFromPointer(ev);
       target.x = pos.x; target.y = pos.y;
+      target.status = 'field';
       el.style.left = `${target.x}%`;
       el.style.top = `${target.y}%`;
     };
@@ -237,20 +301,31 @@ export default function({ parentElement, data, setStateValue }) {
       try { el.releasePointerCapture(pointerId); } catch (_) {}
       pointerId = null;
       shell.dataset.dragging = '0';
+      renderBench();
       commit();
     };
     el.onpointerup = finish;
     el.onpointercancel = finish;
   }
 
+  function isInSafeZone(player) {
+    return player.status === 'field' && player.x >= 16 && player.x <= 84 && player.y >= 3 && player.y <= 22;
+  }
+
+  function offenseSafeCount() {
+    return state.players[state.offense].filter(isInSafeZone).length;
+  }
+
   function renderMarkers() {
     layer.innerHTML = '';
     ['A','B'].forEach(team => {
       state.players[team].forEach(player => {
+        if (player.status !== 'field') return;
         const el = document.createElement('div');
         el.className = `player team-${team.toLowerCase()}`;
         if (team === state.offense) el.classList.add('offense');
         if (team === strategyTeam) el.classList.add('own');
+        if (team === state.offense && player.id === state.current_kicker) el.classList.add('current-kicker');
         el.textContent = player.id;
         el.style.left = `${player.x}%`;
         el.style.top = `${player.y}%`;
@@ -262,6 +337,55 @@ export default function({ parentElement, data, setStateValue }) {
     ball.style.left = `${state.ball.x}%`;
     ball.style.top = `${state.ball.y}%`;
     makeDraggable(ball, state.ball);
+  }
+
+  function renderBench() {
+    const offense = state.offense;
+    const emoji = offense === 'A' ? '🔵' : '🔴';
+    parentElement.querySelector('#benchTeam').textContent = `${emoji} ${offense}팀 대기`;
+    parentElement.querySelector('#currentKickerLabel').textContent = `${state.current_kicker}번`;
+    benchPlayers.innerHTML = '';
+
+    state.players[offense]
+      .filter(player => player.status === 'bench')
+      .forEach(player => {
+        const el = document.createElement('div');
+        el.className = `bench-player team-${offense.toLowerCase()}`;
+        el.textContent = player.id;
+        el.title = `${offense}팀 ${player.id}번 대기`;
+        benchPlayers.appendChild(el);
+      });
+
+    const count = offenseSafeCount();
+    const safeEl = parentElement.querySelector('#safeCount');
+    safeEl.textContent = `안전지대 ${count} / 3`;
+    safeEl.classList.toggle('warn', count > 3);
+
+    const next = parentElement.querySelector('#nextKicker');
+    const isLast = state.current_kicker >= state.counts[offense];
+    next.disabled = !editable || isLast;
+    next.textContent = isLast ? '마지막 키커' : `다음 키커 ${state.current_kicker + 1}번 ▶`;
+    next.onclick = () => {
+      if (!editable || isLast) return;
+      state.current_kicker += 1;
+      const nextPlayer = state.players[offense].find(p => p.id === state.current_kicker);
+      if (nextPlayer) {
+        nextPlayer.status = 'field';
+        nextPlayer.x = 50;
+        nextPlayer.y = 84;
+      }
+      renderMarkers();
+      renderBench();
+      commit();
+    };
+  }
+
+  function resetForOffense(offenseTeam) {
+    state.offense = offenseTeam;
+    state.current_kicker = 1;
+    state.players.A = defaultPositions('A', state.counts.A, offenseTeam);
+    state.players.B = defaultPositions('B', state.counts.B, offenseTeam);
+    state.ball = {x:50,y:78};
   }
 
   function renderControls() {
@@ -276,9 +400,9 @@ export default function({ parentElement, data, setStateValue }) {
         if (!editable) return;
         const team = btn.dataset.countTeam;
         const delta = Number(btn.dataset.delta || 0);
-        state.counts[team] = safeCount(state.counts[team] + delta);
+        state.counts[team] = safeCountNumber(state.counts[team] + delta);
         ensureState();
-        renderControls(); renderMarkers(); commit();
+        renderControls(); renderMarkers(); renderBench(); commit();
       };
     });
 
@@ -289,11 +413,8 @@ export default function({ parentElement, data, setStateValue }) {
         if (!editable) return;
         const nextOffense = btn.dataset.offense;
         if (nextOffense === state.offense) return;
-        state.offense = nextOffense;
-        state.players.A = defaultPositions('A', state.counts.A, state.offense);
-        state.players.B = defaultPositions('B', state.counts.B, state.offense);
-        state.ball = {x:50,y:79};
-        renderControls(); renderMarkers(); commit();
+        resetForOffense(nextOffense);
+        renderControls(); renderMarkers(); renderBench(); commit();
       };
     });
 
@@ -303,26 +424,25 @@ export default function({ parentElement, data, setStateValue }) {
     resetBoard.disabled = !editable;
     ballHome.onclick = () => {
       if (!editable) return;
-      state.ball = {x:50,y:79};
+      state.ball = {x:50,y:78};
       renderMarkers(); commit();
     };
     resetBoard.onclick = () => {
       if (!editable) return;
-      state.players.A = defaultPositions('A', state.counts.A, state.offense);
-      state.players.B = defaultPositions('B', state.counts.B, state.offense);
-      state.ball = {x:50,y:79};
-      renderMarkers(); commit();
+      resetForOffense(state.offense);
+      renderMarkers(); renderBench(); commit();
     };
   }
 
   ensureState();
   renderControls();
   renderMarkers();
+  renderBench();
 }
 """
 
 TACTICS_BOARD = st.components.v2.component(
-    name="kickrun_tactics_board_v2",
+    name="kickrun_tactics_board_v3",
     html=BOARD_HTML,
     css=BOARD_CSS,
     js=BOARD_JS,
@@ -386,7 +506,7 @@ st.markdown(
 if role not in {"A", "B", "T"}:
     st.title("⚽ 킥앤런 디지털 작전판")
     st.write("팀을 선택하면 해당 팀의 **비공개 작전실**로 들어갑니다. 같은 팀 태블릿은 같은 작전판 상태를 공유합니다.")
-    st.info("현재 1차 버전: A/B팀 인원 조절 · 선수/공 자유 이동 · 공격팀 표시 · 약 0.8초 간격 실시간 동기화")
+    st.info("현재 버전: 공격 키커 1명 + 대기석 · 안전지대 3자리 표시 · 다음 키커 전환 · 선수/공 자유 이동 · 약 0.8초 간격 동기화")
 
     c1, c2, c3 = st.columns(3)
     with c1:
