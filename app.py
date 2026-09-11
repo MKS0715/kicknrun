@@ -29,76 +29,91 @@ BOARD_HTML = r"""
     <div id="syncBadge" class="kr-sync">● LIVE</div>
   </div>
 
-  <div class="kr-toolbar">
-    <div class="kr-tool-group">
-      <span class="kr-tool-label">인원</span>
-      <div class="kr-counter team-a-soft">
-        <strong>A팀</strong>
-        <button data-count-team="A" data-delta="-1" aria-label="A팀 한 명 줄이기">−</button>
-        <span id="countA">0</span>
-        <button data-count-team="A" data-delta="1" aria-label="A팀 한 명 늘리기">＋</button>
+  <div class="kr-main">
+    <aside class="kr-toolbar">
+      <section class="kr-tool-group">
+        <div class="kr-tool-label">인원 설정</div>
+        <div class="kr-counter team-a-soft">
+          <strong>A팀</strong>
+          <div class="kr-counter-controls">
+            <button data-count-team="A" data-delta="-1" aria-label="A팀 한 명 줄이기">−</button>
+            <span id="countA">0</span>
+            <button data-count-team="A" data-delta="1" aria-label="A팀 한 명 늘리기">＋</button>
+          </div>
+        </div>
+        <div class="kr-counter team-b-soft">
+          <strong>B팀</strong>
+          <div class="kr-counter-controls">
+            <button data-count-team="B" data-delta="-1" aria-label="B팀 한 명 줄이기">−</button>
+            <span id="countB">0</span>
+            <button data-count-team="B" data-delta="1" aria-label="B팀 한 명 늘리기">＋</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="kr-tool-group">
+        <div class="kr-tool-label">공격팀 선택</div>
+        <button class="kr-offense" data-offense="A">🔵 A팀 공격</button>
+        <button class="kr-offense" data-offense="B">🔴 B팀 공격</button>
+        <div class="kr-help">공격팀을 바꾸면 선수들이 공·수 기본 위치로 즉시 재배치됩니다.</div>
+      </section>
+
+      <section class="kr-tool-group kr-actions">
+        <div class="kr-tool-label">도구</div>
+        <button id="ballHome">⚽ 공 원위치</button>
+        <button id="resetBoard">↺ 배치 초기화</button>
+      </section>
+    </aside>
+
+    <div class="kr-board-area">
+      <div id="field" class="kr-field">
+        <div class="safe-zone"><span>안전지대</span></div>
+        <div class="restriction-line"><span>수비제한선</span></div>
+        <div class="home-mark"><span>HOME</span></div>
+        <div id="playersLayer" class="players-layer"></div>
+        <div id="ball" class="ball" role="img" aria-label="공">⚽</div>
       </div>
-      <div class="kr-counter team-b-soft">
-        <strong>B팀</strong>
-        <button data-count-team="B" data-delta="-1" aria-label="B팀 한 명 줄이기">−</button>
-        <span id="countB">0</span>
-        <button data-count-team="B" data-delta="1" aria-label="B팀 한 명 늘리기">＋</button>
+
+      <div class="kr-footer">
+        <span><i class="legend-dot team-a"></i>A팀</span>
+        <span><i class="legend-dot team-b"></i>B팀</span>
+        <span id="modeText">편집 가능</span>
       </div>
     </div>
-
-    <div class="kr-tool-group">
-      <span class="kr-tool-label">현재 공격</span>
-      <button class="kr-offense" data-offense="A">🔵 A팀 공격</button>
-      <button class="kr-offense" data-offense="B">🔴 B팀 공격</button>
-    </div>
-
-    <div class="kr-tool-group kr-actions">
-      <button id="ballHome">⚽ 공 원위치</button>
-      <button id="resetBoard">↺ 배치 초기화</button>
-    </div>
-  </div>
-
-  <div id="field" class="kr-field">
-    <div class="safe-zone"><span>안전지대</span></div>
-    <div class="restriction-line"><span>수비제한선</span></div>
-    <div class="home-mark"><span>HOME</span></div>
-    <div id="playersLayer" class="players-layer"></div>
-    <div id="ball" class="ball" role="img" aria-label="공">⚽</div>
-  </div>
-
-  <div class="kr-footer">
-    <span><i class="legend-dot team-a"></i>A팀</span>
-    <span><i class="legend-dot team-b"></i>B팀</span>
-    <span id="modeText">편집 가능</span>
   </div>
 </div>
 """
 
 BOARD_CSS = r"""
 .kr-shell {
-  width: 100%; height: 100%; box-sizing: border-box;
-  font-family: var(--st-font, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-  color: #1f2937; background: #f8fafc; border: 1px solid #dbe4ee;
-  border-radius: 18px; padding: 14px; overflow: hidden;
+  width:100%; height:100%; box-sizing:border-box; max-width:1020px; margin:0 auto;
+  font-family:var(--st-font,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif);
+  color:#1f2937; background:#f8fafc; border:1px solid #dbe4ee;
+  border-radius:18px; padding:14px; overflow:hidden;
 }
-.kr-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+.kr-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
 .kr-title { font-size:22px; font-weight:800; letter-spacing:-0.02em; }
 .kr-subtitle { font-size:13px; color:#64748b; margin-top:2px; }
 .kr-sync { font-size:12px; font-weight:800; color:#15803d; background:#dcfce7; border-radius:999px; padding:6px 10px; white-space:nowrap; }
-.kr-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; }
-.kr-tool-group { display:flex; align-items:center; gap:6px; background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:7px; }
-.kr-tool-label { font-size:12px; font-weight:700; color:#64748b; padding:0 3px; }
-.kr-counter { display:flex; align-items:center; gap:5px; border-radius:9px; padding:4px 6px; font-size:13px; }
+.kr-main { display:grid; grid-template-columns:190px minmax(0,720px); gap:14px; align-items:start; justify-content:center; }
+.kr-toolbar { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.kr-tool-group { display:flex; flex-direction:column; align-items:stretch; gap:7px; background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:10px; }
+.kr-tool-label { font-size:12px; font-weight:800; color:#64748b; margin-bottom:1px; }
+.kr-counter { display:flex; align-items:center; justify-content:space-between; gap:7px; border-radius:10px; padding:7px 8px; font-size:13px; }
+.kr-counter-controls { display:flex; align-items:center; gap:6px; }
 .team-a-soft { background:#eff6ff; }
 .team-b-soft { background:#fff1f2; }
-.kr-counter button, .kr-toolbar > .kr-tool-group > button { border:1px solid #cbd5e1; background:#fff; border-radius:9px; min-width:34px; height:34px; padding:0 9px; font-size:13px; font-weight:700; cursor:pointer; }
-.kr-counter button { min-width:30px; width:30px; padding:0; font-size:18px; }
+.kr-counter button, .kr-tool-group > button { border:1px solid #cbd5e1; background:#fff; border-radius:9px; min-width:34px; height:38px; padding:0 9px; font-size:13px; font-weight:800; cursor:pointer; }
+.kr-counter button { min-width:31px; width:31px; height:31px; padding:0; font-size:18px; }
+.kr-counter-controls span { min-width:20px; text-align:center; font-weight:800; }
 .kr-counter button:disabled, .kr-toolbar button:disabled { opacity:.45; cursor:not-allowed; }
-.kr-offense.active { outline:3px solid rgba(15, 118, 110, .18); border-color:#0f766e !important; background:#f0fdfa !important; }
-.kr-actions { margin-left:auto; }
-.kr-field { position:relative; width:100%; height:calc(100% - 148px); min-height:470px; border-radius:16px; overflow:hidden; background:linear-gradient(180deg,#ecfccb 0%,#dcfce7 100%); border:3px solid #ffffff; box-shadow:inset 0 0 0 1px #a7c7a8; touch-action:none; user-select:none; }
-.kr-field::before { content:""; position:absolute; left:8%; right:8%; top:23%; bottom:8%; border:2px solid rgba(255,255,255,.95); border-radius:36% 36% 10% 10%; pointer-events:none; }
-.safe-zone { position:absolute; left:20%; right:20%; top:4%; height:15%; border:3px solid #eab308; background:rgba(254,240,138,.78); border-radius:16px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#854d0e; box-shadow:0 2px 8px rgba(0,0,0,.08); pointer-events:none; }
+.kr-offense { width:100%; }
+.kr-offense.active { outline:3px solid rgba(15,118,110,.17); border-color:#0f766e !important; background:#f0fdfa !important; }
+.kr-help { font-size:11px; line-height:1.45; color:#64748b; background:#f8fafc; border-radius:8px; padding:7px 8px; }
+.kr-board-area { min-width:0; }
+.kr-field { position:relative; width:100%; height:640px; border-radius:16px; overflow:hidden; background:linear-gradient(180deg,#ecfccb 0%,#dcfce7 100%); border:3px solid #ffffff; box-shadow:inset 0 0 0 1px #a7c7a8; touch-action:none; user-select:none; }
+.kr-field::before { content:""; position:absolute; left:9%; right:9%; top:23%; bottom:8%; border:2px solid rgba(255,255,255,.95); border-radius:36% 36% 10% 10%; pointer-events:none; }
+.safe-zone { position:absolute; left:18%; right:18%; top:4%; height:15%; border:3px solid #eab308; background:rgba(254,240,138,.78); border-radius:16px; display:flex; align-items:center; justify-content:center; font-weight:800; color:#854d0e; box-shadow:0 2px 8px rgba(0,0,0,.08); pointer-events:none; }
 .restriction-line { position:absolute; left:5%; right:5%; top:63%; border-top:4px dashed rgba(185,28,28,.75); text-align:center; pointer-events:none; }
 .restriction-line span { position:relative; top:-14px; display:inline-block; background:rgba(255,255,255,.86); color:#991b1b; padding:3px 8px; border-radius:999px; font-size:12px; font-weight:800; }
 .home-mark { position:absolute; left:50%; bottom:3.5%; transform:translateX(-50%); width:78px; height:46px; background:#fff; border:3px solid #475569; clip-path:polygon(0 0,100% 0,88% 72%,50% 100%,12% 72%); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; color:#334155; pointer-events:none; }
@@ -115,14 +130,21 @@ BOARD_CSS = r"""
 .legend-dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; }
 .legend-dot.team-a { background:#2563eb; }
 .legend-dot.team-b { background:#e11d48; }
-@media (max-width: 720px) {
+@media (max-width: 850px) {
+  .kr-shell { padding:10px; }
+  .kr-main { grid-template-columns:160px minmax(0,1fr); gap:8px; }
+  .kr-field { height:600px; }
+  .kr-tool-group { padding:8px; }
+  .kr-help { display:none; }
+}
+@media (max-width: 620px) {
   .kr-title { font-size:18px; }
   .kr-subtitle { display:none; }
-  .kr-toolbar { gap:5px; }
-  .kr-tool-group { padding:5px; gap:4px; }
-  .kr-tool-label { display:none; }
-  .kr-actions { margin-left:0; }
-  .kr-field { min-height:440px; height:calc(100% - 142px); }
+  .kr-main { display:flex; flex-direction:column; }
+  .kr-toolbar { width:100%; display:grid; grid-template-columns:1fr 1fr; }
+  .kr-actions { grid-column:1 / -1; display:grid; grid-template-columns:1fr 1fr; }
+  .kr-actions .kr-tool-label { grid-column:1 / -1; }
+  .kr-field { height:540px; }
   .player { width:42px; height:42px; font-size:15px; }
 }
 """
@@ -265,7 +287,12 @@ export default function({ parentElement, data, setStateValue }) {
       btn.classList.toggle('active', btn.dataset.offense === state.offense);
       btn.onclick = () => {
         if (!editable) return;
-        state.offense = btn.dataset.offense;
+        const nextOffense = btn.dataset.offense;
+        if (nextOffense === state.offense) return;
+        state.offense = nextOffense;
+        state.players.A = defaultPositions('A', state.counts.A, state.offense);
+        state.players.B = defaultPositions('B', state.counts.B, state.offense);
+        state.ball = {x:50,y:79};
         renderControls(); renderMarkers(); commit();
       };
     });
@@ -295,7 +322,7 @@ export default function({ parentElement, data, setStateValue }) {
 """
 
 TACTICS_BOARD = st.components.v2.component(
-    name="kickrun_tactics_board_v1",
+    name="kickrun_tactics_board_v2",
     html=BOARD_HTML,
     css=BOARD_CSS,
     js=BOARD_JS,
@@ -311,7 +338,7 @@ def persist_component_state(team: str, key: str, editable: bool) -> None:
         STORE.update_board(team, incoming)
 
 
-def show_board(team: str, *, editable: bool, key_suffix: str, height: int = 700) -> None:
+def show_board(team: str, *, editable: bool, key_suffix: str, height: int = 760) -> None:
     component_key = f"kr_board_{team}_{key_suffix}"
 
     @st.fragment(run_every=0.8)
@@ -348,7 +375,7 @@ role = str(role_raw).upper() if role_raw is not None else ""
 st.markdown(
     """
     <style>
-      .block-container { padding-top: 1.35rem; padding-bottom: 2rem; max-width: 1350px; }
+      .block-container { padding-top: 1.35rem; padding-bottom: 2rem; max-width: 1120px; }
       h1, h2, h3 { letter-spacing: -0.035em; }
       div[data-testid="stButton"] button { border-radius: 12px; font-weight: 750; }
     </style>
@@ -404,10 +431,10 @@ with st.sidebar:
 if role in {"A", "B"}:
     st.title(f"{'🔵' if role == 'A' else '🔴'} {role}팀 작전실")
     st.caption("팀원끼리 의논한 뒤 선수 번호와 공을 직접 움직이세요. 다른 태블릿에는 약 0.8초 안팎으로 반영됩니다.")
-    show_board(role, editable=True, key_suffix="student", height=700)
+    show_board(role, editable=True, key_suffix="student", height=760)
     st.caption("※ 1차 버전은 서버 메모리 공유 방식입니다. Streamlit 앱이 재시작되면 작전판이 초기화됩니다.")
 else:
     st.title("👨‍🏫 교사용 모니터")
     st.caption("학생 작전판을 건드리지 않고 실시간으로 확인합니다.")
     selected = st.radio("확인할 팀", ["A", "B"], horizontal=True, format_func=lambda x: f"{'🔵' if x == 'A' else '🔴'} {x}팀")
-    show_board(selected, editable=False, key_suffix="teacher", height=700)
+    show_board(selected, editable=False, key_suffix="teacher", height=760)
