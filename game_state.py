@@ -74,6 +74,7 @@ def make_initial_board(strategy_team: str, counts: dict[str, int] | None = None)
         },
         "ball": {"x": 50.0, "y": 78.0},
         "revision": 0,
+        "client_seq": 0,
         "updated_at": time(),
     }
 
@@ -186,6 +187,14 @@ class SharedGameStore:
             current["current_kicker"] = current_kicker
             current["counts"] = deepcopy(self._counts)
             current["players"] = normalized_players
+            incoming_client_seq = _safe_int(
+                incoming.get("client_seq"),
+                int(current.get("client_seq", 0)),
+            )
+            current["client_seq"] = max(
+                int(current.get("client_seq", 0)),
+                incoming_client_seq,
+            )
 
             ball = incoming.get("ball", {})
             if not isinstance(ball, dict):

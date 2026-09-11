@@ -203,7 +203,25 @@ export default function({ parentElement, data, setStateValue }) {
 
   if (shell.dataset.dragging === '1') return;
 
-  let state = structuredClone(data?.board_state || {});
+  // A button click updates the browser immediately, while Streamlit may briefly
+  // rerun the fragment with the previous server snapshot. Keep the newest local
+  // edit until the server echoes its client sequence number back.
+  const pendingRoot = window.__kickrunPendingStates || (window.__kickrunPendingStates = {});
+  const pendingKey = `kickrun:${strategyTeam}`;
+  const incomingState = structuredClone(data?.board_state || {});
+  const pending = pendingRoot[pendingKey];
+  const incomingClientSeq = Number(incomingState.client_seq || 0);
+
+  let state;
+  if (editable && pending && incomingClientSeq < Number(pending.clientSeq || 0) && Date.now() < pending.expiresAt) {
+    state = structuredClone(pending.state);
+  } else {
+    state = incomingState;
+    if (pending && incomingClientSeq >= Number(pending.clientSeq || 0)) {
+      delete pendingRoot[pendingKey];
+    }
+  }
+
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const safeCountNumber = (v) => clamp(Number.parseInt(v ?? 1, 10) || 1, 1, 12);
 
@@ -264,8 +282,15 @@ export default function({ parentElement, data, setStateValue }) {
 
   function commit() {
     if (!editable) return;
+    state.client_seq = Math.max(Number(state.client_seq || 0), incomingClientSeq) + 1;
     state.updated_at_client = Date.now();
-    setStateValue('board_state', structuredClone(state));
+    const outgoing = structuredClone(state);
+    pendingRoot[pendingKey] = {
+      state: outgoing,
+      clientSeq: state.client_seq,
+      expiresAt: Date.now() + 4000,
+    };
+    setStateValue('board_state', outgoing);
   }
 
   function coordsFromPointer(ev) {
@@ -442,7 +467,7 @@ export default function({ parentElement, data, setStateValue }) {
 """
 
 TACTICS_BOARD = st.components.v2.component(
-    name="kickrun_tactics_board_v3",
+    name="kickrun_tactics_board_v31",
     html=BOARD_HTML,
     css=BOARD_CSS,
     js=BOARD_JS,
@@ -506,7 +531,7 @@ st.markdown(
 if role not in {"A", "B", "T"}:
     st.title("⚽ 킥앤런 디지털 작전판")
     st.write("팀을 선택하면 해당 팀의 **비공개 작전실**로 들어갑니다. 같은 팀 태블릿은 같은 작전판 상태를 공유합니다.")
-    st.info("현재 버전: 공격 키커 1명 + 대기석 · 안전지대 3자리 표시 · 다음 키커 전환 · 선수/공 자유 이동 · 약 0.8초 간격 동기화")
+    st.info("현재 버전: 공격 키커 1명 + 대기석 · 안전지대 3자리 표시 · 다음 키커 전환 · 선수/공 자유 이동 · 동기화 안정화")
 
     c1, c2, c3 = st.columns(3)
     with c1:
