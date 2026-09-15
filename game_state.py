@@ -5,6 +5,8 @@ from threading import RLock
 from time import time
 from typing import Any
 
+STORE_SCHEMA_VERSION = "v4.1-controller-lease"
+
 MIN_PLAYERS = 1
 MAX_PLAYERS = 12
 DEFAULT_COUNTS = {"A": 8, "B": 9}

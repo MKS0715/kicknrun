@@ -14,12 +14,47 @@ st.set_page_config(
 )
 
 
-@st.cache_resource
-def get_store() -> SharedGameStore:
+# Cache-bust token: bump this whenever SharedGameStore's interface changes.
+# Streamlit Community Cloud can preserve a cached resource across a hot deploy,
+# so a new app.py can otherwise keep an instance created from an older class.
+STORE_CACHE_VERSION = "v4.1-controller-lease"
+
+
+@st.cache_resource(show_spinner=False)
+def get_store(cache_version: str) -> SharedGameStore:
+    # cache_version is intentionally unused inside the function.  It is part of
+    # the cache key so a deployment that changes the store schema creates a new
+    # SharedGameStore instance instead of reusing an old cached object.
+    _ = cache_version
     return SharedGameStore()
 
 
-STORE = get_store()
+STORE = get_store(STORE_CACHE_VERSION)
+
+# Defensive recovery for a stale resource left behind by an older deployment.
+# If the imported class has the v4 controller API but the cached instance does
+# not, clear only this function's cache and recreate the store immediately.
+if not hasattr(STORE, "is_controller") and hasattr(SharedGameStore, "is_controller"):
+    get_store.clear()
+    STORE = get_store(STORE_CACHE_VERSION)
+
+# If game_state.py itself was not replaced on GitHub, fail with an actionable
+# message instead of an AttributeError deep inside the UI.
+_REQUIRED_STORE_METHODS = (
+    "is_controller",
+    "claim_controller",
+    "touch_controller",
+    "release_controller",
+    "controller_status",
+)
+_missing_store_methods = [name for name in _REQUIRED_STORE_METHODS if not hasattr(STORE, name)]
+if _missing_store_methods:
+    st.error(
+        "game_state.py가 v4 파일로 갱신되지 않았습니다. "
+        "GitHub의 app.py와 game_state.py를 둘 다 v4.1 파일로 교체한 뒤 앱을 Reboot 해주세요. "
+        f"누락된 기능: {', '.join(_missing_store_methods)}"
+    )
+    st.stop()
 
 BOARD_HTML = r"""
 <div class="kr-shell">
