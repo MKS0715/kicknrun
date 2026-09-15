@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import uuid4
+
 import streamlit as st
 
 from game_state import SharedGameStore
@@ -203,21 +205,21 @@ export default function({ parentElement, data, setStateValue }) {
 
   if (shell.dataset.dragging === '1') return;
 
-  // A button click updates the browser immediately, while Streamlit may briefly
-  // rerun the fragment with the previous server snapshot. Keep the newest local
-  // edit until the server echoes its client sequence number back.
+  // Keep a just-made host edit on screen until the server confirms the exact
+  // change id. Viewer devices never keep local pending state, so every shared
+  // server snapshot (including offense changes) is applied immediately.
   const pendingRoot = window.__kickrunPendingStates || (window.__kickrunPendingStates = {});
   const pendingKey = `kickrun:${strategyTeam}`;
   const incomingState = structuredClone(data?.board_state || {});
   const pending = pendingRoot[pendingKey];
-  const incomingClientSeq = Number(incomingState.client_seq || 0);
+  const incomingChangeId = String(incomingState.last_change_id || '');
 
   let state;
-  if (editable && pending && incomingClientSeq < Number(pending.clientSeq || 0) && Date.now() < pending.expiresAt) {
+  if (editable && pending && incomingChangeId !== pending.changeId && Date.now() < pending.expiresAt) {
     state = structuredClone(pending.state);
   } else {
     state = incomingState;
-    if (pending && incomingClientSeq >= Number(pending.clientSeq || 0)) {
+    if (pending && (incomingChangeId === pending.changeId || Date.now() >= pending.expiresAt)) {
       delete pendingRoot[pendingKey];
     }
   }
@@ -282,13 +284,14 @@ export default function({ parentElement, data, setStateValue }) {
 
   function commit() {
     if (!editable) return;
-    state.client_seq = Math.max(Number(state.client_seq || 0), incomingClientSeq) + 1;
+    const changeId = `${strategyTeam}:${Date.now()}:${Math.random().toString(36).slice(2,9)}`;
+    state.client_change_id = changeId;
     state.updated_at_client = Date.now();
     const outgoing = structuredClone(state);
     pendingRoot[pendingKey] = {
       state: outgoing,
-      clientSeq: state.client_seq,
-      expiresAt: Date.now() + 4000,
+      changeId,
+      expiresAt: Date.now() + 3500,
     };
     setStateValue('board_state', outgoing);
   }
@@ -467,31 +470,34 @@ export default function({ parentElement, data, setStateValue }) {
 """
 
 TACTICS_BOARD = st.components.v2.component(
-    name="kickrun_tactics_board_v31",
+    name="kickrun_tactics_board_v4",
     html=BOARD_HTML,
     css=BOARD_CSS,
     js=BOARD_JS,
 )
 
 
-def persist_component_state(team: str, key: str, editable: bool) -> None:
-    if not editable:
+def persist_component_state(team: str, key: str, client_id: str, editable: bool) -> None:
+    if not editable or not STORE.is_controller(team, client_id):
         return
     result = st.session_state.get(key)
     incoming = getattr(result, "board_state", None) if result is not None else None
     if isinstance(incoming, dict):
-        STORE.update_board(team, incoming)
+        STORE.update_board(team, incoming, client_id=client_id)
 
 
-def show_board(team: str, *, editable: bool, key_suffix: str, height: int = 760) -> None:
+def show_board(team: str, *, client_id: str, key_suffix: str, height: int = 760) -> None:
     component_key = f"kr_board_{team}_{key_suffix}"
 
     @st.fragment(run_every=0.8)
     def live_board() -> None:
+        editable = STORE.is_controller(team, client_id)
+        if editable:
+            STORE.touch_controller(team, client_id)
         snapshot = STORE.snapshot(team)
 
         def on_board_state_change() -> None:
-            persist_component_state(team, component_key, editable)
+            persist_component_state(team, component_key, client_id, editable)
 
         TACTICS_BOARD(
             data={
@@ -509,6 +515,37 @@ def show_board(team: str, *, editable: bool, key_suffix: str, height: int = 760)
     live_board()
 
 
+def show_controller_bar(team: str, client_id: str) -> None:
+    @st.fragment(run_every=1.0)
+    def controller_bar() -> None:
+        is_host = STORE.is_controller(team, client_id)
+        if is_host:
+            STORE.touch_controller(team, client_id)
+            c1, c2 = st.columns([4, 1])
+            with c1:
+                st.success("✏️ 이 기기가 현재 작전판 조작자입니다. 다른 팀원 기기는 보기 전용으로 자동 동기화됩니다.")
+            with c2:
+                if st.button("조작권 놓기", key=f"release_{team}_{client_id}", use_container_width=True):
+                    STORE.release_controller(team, client_id)
+                    st.rerun(scope="fragment")
+            return
+
+        status = STORE.controller_status(team)
+        if status["active"]:
+            st.info("👀 다른 팀원 기기가 작전판을 조작 중입니다. 이 기기는 보기 전용이며 변경 내용이 자동 반영됩니다.")
+            return
+
+        c1, c2 = st.columns([4, 1])
+        with c1:
+            st.info("👀 현재 작전판 조작자가 없습니다. 한 기기만 조작권을 가져가서 작전을 수정하세요.")
+        with c2:
+            if st.button("✏️ 조작권 가져오기", key=f"claim_{team}_{client_id}", type="primary", use_container_width=True):
+                STORE.claim_controller(team, client_id)
+                st.rerun(scope="fragment")
+
+    controller_bar()
+
+
 def go_to(role: str) -> None:
     st.query_params["team"] = role
     st.rerun()
@@ -516,6 +553,10 @@ def go_to(role: str) -> None:
 
 role_raw = st.query_params.get("team", "")
 role = str(role_raw).upper() if role_raw is not None else ""
+
+if "kickrun_client_id" not in st.session_state:
+    st.session_state["kickrun_client_id"] = uuid4().hex
+client_id = str(st.session_state["kickrun_client_id"])
 
 st.markdown(
     """
@@ -531,17 +572,17 @@ st.markdown(
 if role not in {"A", "B", "T"}:
     st.title("⚽ 킥앤런 디지털 작전판")
     st.write("팀을 선택하면 해당 팀의 **비공개 작전실**로 들어갑니다. 같은 팀 태블릿은 같은 작전판 상태를 공유합니다.")
-    st.info("현재 버전: 공격 키커 1명 + 대기석 · 안전지대 3자리 표시 · 다음 키커 전환 · 선수/공 자유 이동 · 동기화 안정화")
+    st.info("현재 버전: 팀별 1대만 조작 · 나머지는 실시간 보기 · 공격팀 전환 공유 · 키커/대기석 · 안전지대 3자리 · 선수/공 자유 이동")
 
     c1, c2, c3 = st.columns(3)
     with c1:
         st.subheader("🔵 A팀")
-        st.caption("A팀 학생용 편집 화면")
+        st.caption("A팀 공유 작전실 · 한 기기만 조작권 사용")
         if st.button("A팀 작전실 입장", use_container_width=True, type="primary"):
             go_to("A")
     with c2:
         st.subheader("🔴 B팀")
-        st.caption("B팀 학생용 편집 화면")
+        st.caption("B팀 공유 작전실 · 한 기기만 조작권 사용")
         if st.button("B팀 작전실 입장", use_container_width=True, type="primary"):
             go_to("B")
     with c3:
@@ -573,13 +614,26 @@ with st.sidebar:
             st.success("A/B팀 작전판과 인원수를 초기화했습니다.")
             st.rerun()
 
+        st.divider()
+        st.caption("조작 기기가 멈추거나 닫혔을 때만 사용하세요.")
+        c_unlock_a, c_unlock_b = st.columns(2)
+        with c_unlock_a:
+            if st.button("A 조작권 해제", use_container_width=True):
+                STORE.release_controller("A", force=True)
+                st.rerun()
+        with c_unlock_b:
+            if st.button("B 조작권 해제", use_container_width=True):
+                STORE.release_controller("B", force=True)
+                st.rerun()
+
 if role in {"A", "B"}:
     st.title(f"{'🔵' if role == 'A' else '🔴'} {role}팀 작전실")
-    st.caption("팀원끼리 의논한 뒤 선수 번호와 공을 직접 움직이세요. 다른 태블릿에는 약 0.8초 안팎으로 반영됩니다.")
-    show_board(role, editable=True, key_suffix="student", height=760)
-    st.caption("※ 1차 버전은 서버 메모리 공유 방식입니다. Streamlit 앱이 재시작되면 작전판이 초기화됩니다.")
+    st.caption("한 기기만 조작권을 가지고 작전판을 움직입니다. 같은 팀의 다른 태블릿은 약 0.8초 안팎으로 같은 상태를 봅니다.")
+    show_controller_bar(role, client_id)
+    show_board(role, client_id=client_id, key_suffix="student", height=760)
+    st.caption("※ 조작 기기가 화면을 닫으면 약 15초 뒤 조작권이 자동으로 풀립니다. Streamlit 앱이 재시작되면 작전판도 초기화됩니다.")
 else:
     st.title("👨‍🏫 교사용 모니터")
     st.caption("학생 작전판을 건드리지 않고 실시간으로 확인합니다.")
     selected = st.radio("확인할 팀", ["A", "B"], horizontal=True, format_func=lambda x: f"{'🔵' if x == 'A' else '🔴'} {x}팀")
-    show_board(selected, editable=False, key_suffix="teacher", height=760)
+    show_board(selected, client_id=f"teacher-{client_id}", key_suffix="teacher", height=760)

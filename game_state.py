@@ -8,6 +8,7 @@ from typing import Any
 MIN_PLAYERS = 1
 MAX_PLAYERS = 12
 DEFAULT_COUNTS = {"A": 8, "B": 9}
+CONTROLLER_LEASE_SECONDS = 15.0
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -29,11 +30,7 @@ def _safe_float(value: Any, fallback: float) -> float:
 
 
 def initial_positions(team: str, count: int, offense_team: str) -> list[dict[str, Any]]:
-    """Create percentage-based positions for the kick-and-run tactics board.
-
-    The offense starts with one current kicker on the field and all remaining
-    hitters on the waiting bench. The defense starts fully deployed.
-    """
+    """Create percentage-based positions for the kick-and-run tactics board."""
     count = max(MIN_PLAYERS, min(MAX_PLAYERS, int(count)))
     offense = team == offense_team
 
@@ -74,7 +71,7 @@ def make_initial_board(strategy_team: str, counts: dict[str, int] | None = None)
         },
         "ball": {"x": 50.0, "y": 78.0},
         "revision": 0,
-        "client_seq": 0,
+        "last_change_id": "",
         "updated_at": time(),
     }
 
@@ -122,7 +119,12 @@ def _ensure_current_kicker(players: list[dict[str, Any]], current_kicker: int) -
 
 
 class SharedGameStore:
-    """Thread-safe in-memory state shared across Streamlit browser sessions."""
+    """Thread-safe in-memory state shared across Streamlit browser sessions.
+
+    Each team has one shared private tactics board and one temporary controller
+    lease. Only the device holding the lease is allowed to write to that board.
+    Other devices always render the same server snapshot in view-only mode.
+    """
 
     def __init__(self) -> None:
         self._lock = RLock()
@@ -131,20 +133,104 @@ class SharedGameStore:
             "A": make_initial_board("A", self._counts),
             "B": make_initial_board("B", self._counts),
         }
+        self._controllers: dict[str, dict[str, Any] | None] = {"A": None, "B": None}
+
+    @staticmethod
+    def _team(strategy_team: str) -> str:
+        return strategy_team if strategy_team in ("A", "B") else "A"
+
+    def _expire_controller_locked(self, team: str) -> None:
+        controller = self._controllers.get(team)
+        if controller is None:
+            return
+        if time() - float(controller.get("last_seen", 0.0)) > CONTROLLER_LEASE_SECONDS:
+            self._controllers[team] = None
+
+    def controller_status(self, strategy_team: str) -> dict[str, Any]:
+        team = self._team(strategy_team)
+        with self._lock:
+            self._expire_controller_locked(team)
+            controller = self._controllers.get(team)
+            if controller is None:
+                return {"active": False, "client_id": None, "expires_in": 0.0}
+            expires_in = max(
+                0.0,
+                CONTROLLER_LEASE_SECONDS - (time() - float(controller["last_seen"])),
+            )
+            return {
+                "active": True,
+                "client_id": str(controller["client_id"]),
+                "expires_in": expires_in,
+            }
+
+    def claim_controller(self, strategy_team: str, client_id: str) -> bool:
+        team = self._team(strategy_team)
+        client_id = str(client_id)
+        with self._lock:
+            self._expire_controller_locked(team)
+            controller = self._controllers.get(team)
+            if controller is not None and str(controller["client_id"]) != client_id:
+                return False
+            self._controllers[team] = {"client_id": client_id, "last_seen": time()}
+            return True
+
+    def touch_controller(self, strategy_team: str, client_id: str) -> bool:
+        team = self._team(strategy_team)
+        client_id = str(client_id)
+        with self._lock:
+            self._expire_controller_locked(team)
+            controller = self._controllers.get(team)
+            if controller is None or str(controller["client_id"]) != client_id:
+                return False
+            controller["last_seen"] = time()
+            return True
+
+    def is_controller(self, strategy_team: str, client_id: str) -> bool:
+        team = self._team(strategy_team)
+        client_id = str(client_id)
+        with self._lock:
+            self._expire_controller_locked(team)
+            controller = self._controllers.get(team)
+            return controller is not None and str(controller["client_id"]) == client_id
+
+    def release_controller(self, strategy_team: str, client_id: str | None = None, *, force: bool = False) -> bool:
+        team = self._team(strategy_team)
+        with self._lock:
+            self._expire_controller_locked(team)
+            controller = self._controllers.get(team)
+            if controller is None:
+                return True
+            if force or (client_id is not None and str(controller["client_id"]) == str(client_id)):
+                self._controllers[team] = None
+                return True
+            return False
 
     def snapshot(self, strategy_team: str) -> dict[str, Any]:
-        team = strategy_team if strategy_team in ("A", "B") else "A"
+        team = self._team(strategy_team)
         with self._lock:
             board = deepcopy(self._boards[team])
             board["counts"] = deepcopy(self._counts)
             return board
 
-    def update_board(self, strategy_team: str, incoming: Any) -> dict[str, Any]:
-        team = strategy_team if strategy_team in ("A", "B") else "A"
+    def update_board(
+        self,
+        strategy_team: str,
+        incoming: Any,
+        *,
+        client_id: str | None = None,
+    ) -> dict[str, Any]:
+        team = self._team(strategy_team)
         if not isinstance(incoming, dict):
             return self.snapshot(team)
 
         with self._lock:
+            if client_id is not None:
+                self._expire_controller_locked(team)
+                controller = self._controllers.get(team)
+                if controller is None or str(controller["client_id"]) != str(client_id):
+                    return deepcopy(self._boards[team])
+                controller["last_seen"] = time()
+
             incoming_counts = incoming.get("counts", {})
             if isinstance(incoming_counts, dict):
                 for label in ("A", "B"):
@@ -187,14 +273,6 @@ class SharedGameStore:
             current["current_kicker"] = current_kicker
             current["counts"] = deepcopy(self._counts)
             current["players"] = normalized_players
-            incoming_client_seq = _safe_int(
-                incoming.get("client_seq"),
-                int(current.get("client_seq", 0)),
-            )
-            current["client_seq"] = max(
-                int(current.get("client_seq", 0)),
-                incoming_client_seq,
-            )
 
             ball = incoming.get("ball", {})
             if not isinstance(ball, dict):
@@ -204,11 +282,14 @@ class SharedGameStore:
                 "x": _clamp(_safe_float(ball.get("x"), current_ball["x"]), 2.0, 98.0),
                 "y": _clamp(_safe_float(ball.get("y"), current_ball["y"]), 2.0, 98.0),
             }
+
+            change_id = str(incoming.get("client_change_id") or "")[:120]
+            current["last_change_id"] = change_id
             current["revision"] = int(current.get("revision", 0)) + 1
             current["updated_at"] = time()
 
-            # Counts are shared globally. Resize the other private tactics board
-            # while preserving that board's own strategy, locations, and kicker.
+            # Counts are common to both rooms. Resize the other room while
+            # preserving its own strategy and player locations.
             other_team = "B" if team == "A" else "A"
             other = self._boards[other_team]
             other_offense = other.get("offense", other_team)
@@ -243,7 +324,7 @@ class SharedGameStore:
             return deepcopy(current)
 
     def reset_board(self, strategy_team: str) -> dict[str, Any]:
-        team = strategy_team if strategy_team in ("A", "B") else "A"
+        team = self._team(strategy_team)
         with self._lock:
             self._boards[team] = make_initial_board(team, self._counts)
             return deepcopy(self._boards[team])
